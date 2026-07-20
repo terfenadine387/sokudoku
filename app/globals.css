@@ -1,0 +1,27 @@
+:root {
+  --ink: #1b2430;
+  --ink-soft: #4a5568;
+  --paper: #f7f5f0;
+  --paper-line: #e4e0d6;
+  --accent: #2f5d50;
+  --accent-soft: #dce8e4;
+  --gold: #b8873a;
+  --danger: #a1443a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+}
+
+a {
+  color: inherit;
+}

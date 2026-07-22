@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ALL_LESSON_NUMS } from "@/lib/lessonTitles";
 import LessonPlayer from "./LessonPlayer";
 
@@ -7,5 +8,9 @@ export function generateStaticParams() {
 }
 
 export default function LessonPage({ params }: { params: { num: string } }) {
-  return <LessonPlayer num={params.num} />;
+  return (
+    <Suspense fallback={null}>
+      <LessonPlayer num={params.num} />
+    </Suspense>
+  );
 }

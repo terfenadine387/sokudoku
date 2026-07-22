@@ -2,10 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LESSON_TITLES, ALL_LESSON_NUMS } from "@/lib/lessonTitles";
 
 type Word = { w: string; s: number; e: number };
 type Segment = { start: number; end: number; text: string; words: Word[] };
+
+type EndMode = "next" | "loop" | "stop";
+const END_MODE_KEY = "shadowing_end_mode";
 
 function fmtTime(t: number) {
   if (!isFinite(t)) return "0:00";
@@ -17,6 +21,9 @@ function fmtTime(t: number) {
 }
 
 export default function LessonPlayer({ num }: { num: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [segments, setSegments] = useState<Segment[] | null>(null);
   const [error, setError] = useState(false);
   const [currentSegIndex, setCurrentSegIndex] = useState(-1);
@@ -25,18 +32,34 @@ export default function LessonPlayer({ num }: { num: string }) {
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1.0);
+  const [endMode, setEndMode] = useState<EndMode>("stop");
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const autoplayHandledRef = useRef(false);
 
   const idx = ALL_LESSON_NUMS.indexOf(num);
   const [title, category] = LESSON_TITLES[num] ?? ["", ""];
   const prevNum = idx > 0 ? ALL_LESSON_NUMS[idx - 1] : null;
   const nextNum = idx < ALL_LESSON_NUMS.length - 1 ? ALL_LESSON_NUMS[idx + 1] : null;
 
+  // レッスン終了時の挙動設定をlocalStorageから読み込み
+  useEffect(() => {
+    const saved = localStorage.getItem(END_MODE_KEY);
+    if (saved === "next" || saved === "loop" || saved === "stop") {
+      setEndMode(saved);
+    }
+  }, []);
+
+  function changeEndMode(mode: EndMode) {
+    setEndMode(mode);
+    localStorage.setItem(END_MODE_KEY, mode);
+  }
+
   useEffect(() => {
     setSegments(null);
     setError(false);
+    autoplayHandledRef.current = false;
     fetch(`/data/E${num}.json`)
       .then((r) => {
         if (!r.ok) throw new Error("not found");
@@ -45,6 +68,18 @@ export default function LessonPlayer({ num }: { num: string }) {
       .then(setSegments)
       .catch(() => setError(true));
   }, [num]);
+
+  // ?autoplay=1 で遷移してきた場合、読み込み後に自動再生
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !segments || autoplayHandledRef.current) return;
+    if (searchParams.get("autoplay") === "1") {
+      autoplayHandledRef.current = true;
+      const tryPlay = () => audio.play().catch(() => {});
+      if (audio.readyState >= 1) tryPlay();
+      else audio.addEventListener("loadedmetadata", tryPlay, { once: true });
+    }
+  }, [segments, searchParams]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -87,18 +122,30 @@ export default function LessonPlayer({ num }: { num: string }) {
     function onPause() {
       setPlaying(false);
     }
+    function onEnded() {
+      // 文リピート中は onTimeUpdate 側で先に巻き戻るため通常ここには来ない
+      if (endMode === "next" && nextNum) {
+        router.push(`/lesson/${nextNum}?autoplay=1`);
+      } else if (endMode === "loop") {
+        audio!.currentTime = 0;
+        audio!.play().catch(() => {});
+      }
+      // "stop" の場合は何もしない(自然に停止した状態のまま)
+    }
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
     };
-  }, [segments, loopSegIndex]);
+  }, [segments, loopSegIndex, endMode, nextNum, router]);
 
   function seekTo(t: number) {
     if (audioRef.current) audioRef.current.currentTime = t;
@@ -184,8 +231,56 @@ export default function LessonPlayer({ num }: { num: string }) {
         <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>E{num} ・ 速読英単語 入門編</div>
       </div>
 
-      <div style={{ fontSize: 12, color: "var(--ink-soft)", margin: "10px 0 22px" }}>
+      <div style={{ fontSize: 12, color: "var(--ink-soft)", margin: "10px 0 14px" }}>
         文をタップして再生 / 🔁 でその文だけリピート / 下の速度ボタンでゆっくり再生
+      </div>
+
+      {/* レッスン終了時の挙動スイッチ */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 22,
+          fontSize: 11,
+          color: "var(--ink-soft)",
+        }}
+      >
+        <span>レッスン終了時:</span>
+        <div
+          style={{
+            display: "flex",
+            gap: 3,
+            background: "var(--accent-soft)",
+            borderRadius: 16,
+            padding: 3,
+          }}
+        >
+          {(
+            [
+              { mode: "next" as EndMode, label: "▶ 次へ" },
+              { mode: "loop" as EndMode, label: "🔁 頭へ" },
+              { mode: "stop" as EndMode, label: "⏹ 停止" },
+            ]
+          ).map(({ mode, label }) => (
+            <button
+              key={mode}
+              onClick={() => changeEndMode(mode)}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 13,
+                fontSize: 11,
+                border: "none",
+                cursor: "pointer",
+                background: endMode === mode ? "var(--accent)" : "transparent",
+                color: endMode === mode ? "white" : "var(--ink-soft)",
+                fontWeight: endMode === mode ? 700 : 400,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 文リスト */}
@@ -197,7 +292,10 @@ export default function LessonPlayer({ num }: { num: string }) {
             ref={(el) => {
               rowRefs.current[i] = el;
             }}
-            onClick={() => seekTo(seg.start)}
+            onClick={() => {
+              seekTo(seg.start);
+              audioRef.current?.play().catch(() => {});
+            }}
             style={{
               display: "grid",
               gridTemplateColumns: "34px 1fr auto",
@@ -298,7 +396,10 @@ export default function LessonPlayer({ num }: { num: string }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button
-              onClick={() => seekTo(segments?.[Math.max(0, currentSegIndex - 1)]?.start ?? 0)}
+              onClick={() => {
+                seekTo(segments?.[Math.max(0, currentSegIndex - 1)]?.start ?? 0);
+                audioRef.current?.play().catch(() => {});
+              }}
               style={ctrlBtnStyle}
             >
               ⏮
@@ -322,11 +423,12 @@ export default function LessonPlayer({ num }: { num: string }) {
               {playing ? "⏸" : "▶"}
             </button>
             <button
-              onClick={() =>
+              onClick={() => {
                 seekTo(
                   segments?.[Math.min((segments?.length ?? 1) - 1, currentSegIndex + 1)]?.start ?? 0
-                )
-              }
+                );
+                audioRef.current?.play().catch(() => {});
+              }}
               style={ctrlBtnStyle}
             >
               ⏭

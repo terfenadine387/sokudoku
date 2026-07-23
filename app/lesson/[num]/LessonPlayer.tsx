@@ -10,6 +10,8 @@ type Segment = { start: number; end: number; text: string; words: Word[] };
 
 type EndMode = "next" | "loop" | "stop";
 const END_MODE_KEY = "shadowing_end_mode";
+const SKIP_LEARNED_KEY = "shadowing_skip_learned";
+const learnedKeyFor = (num: string) => `shadowing_learned_E${num}`;
 
 function fmtTime(t: number) {
   if (!isFinite(t)) return "0:00";
@@ -33,6 +35,8 @@ export default function LessonPlayer({ num }: { num: string }) {
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1.0);
   const [endMode, setEndMode] = useState<EndMode>("stop");
+  const [learnedSet, setLearnedSet] = useState<Set<number>>(new Set());
+  const [skipLearned, setSkipLearned] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -49,11 +53,42 @@ export default function LessonPlayer({ num }: { num: string }) {
     if (saved === "next" || saved === "loop" || saved === "stop") {
       setEndMode(saved);
     }
+    const savedSkip = localStorage.getItem(SKIP_LEARNED_KEY);
+    if (savedSkip === "1") setSkipLearned(true);
   }, []);
 
   function changeEndMode(mode: EndMode) {
     setEndMode(mode);
     localStorage.setItem(END_MODE_KEY, mode);
+  }
+
+  function toggleSkipLearned() {
+    setSkipLearned((prev) => {
+      const next = !prev;
+      localStorage.setItem(SKIP_LEARNED_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
+
+  // レッスンが変わったら、そのレッスンの「覚えた」記録を読み込む
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(learnedKeyFor(num));
+      const arr: number[] = raw ? JSON.parse(raw) : [];
+      setLearnedSet(new Set(arr));
+    } catch {
+      setLearnedSet(new Set());
+    }
+  }, [num]);
+
+  function toggleLearned(i: number) {
+    setLearnedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      localStorage.setItem(learnedKeyFor(num), JSON.stringify(Array.from(next)));
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -85,6 +120,18 @@ export default function LessonPlayer({ num }: { num: string }) {
     const audio = audioRef.current;
     if (!audio || !segments) return;
 
+    function handleLessonEnd() {
+      if (endMode === "next" && nextNum) {
+        router.push(`/lesson/${nextNum}?autoplay=1`);
+      } else if (endMode === "loop") {
+        audio!.currentTime = 0;
+        audio!.play().catch(() => {});
+      } else {
+        audio!.pause();
+      }
+      // "stop" の場合は何もしない(自然に停止した状態のまま)
+    }
+
     function onTimeUpdate() {
       const t = audio!.currentTime;
       setCurTime(t);
@@ -111,6 +158,24 @@ export default function LessonPlayer({ num }: { num: string }) {
         if (t >= seg.end || t < seg.start - 0.05) {
           audio!.currentTime = seg.start;
         }
+        return;
+      }
+
+      // 「覚えた」文をスキップ(再生中のみ、かつ文リピート中は対象外)
+      if (skipLearned && !audio!.paused && learnedSet.has(i)) {
+        let next = -1;
+        for (let k = i + 1; k < segments!.length; k++) {
+          if (!learnedSet.has(k)) {
+            next = k;
+            break;
+          }
+        }
+        if (next !== -1) {
+          audio!.currentTime = segments![next].start;
+        } else {
+          // これ以降すべて覚えた文 → レッスン終了扱い
+          handleLessonEnd();
+        }
       }
     }
     function onLoadedMetadata() {
@@ -124,13 +189,7 @@ export default function LessonPlayer({ num }: { num: string }) {
     }
     function onEnded() {
       // 文リピート中は onTimeUpdate 側で先に巻き戻るため通常ここには来ない
-      if (endMode === "next" && nextNum) {
-        router.push(`/lesson/${nextNum}?autoplay=1`);
-      } else if (endMode === "loop") {
-        audio!.currentTime = 0;
-        audio!.play().catch(() => {});
-      }
-      // "stop" の場合は何もしない(自然に停止した状態のまま)
+      handleLessonEnd();
     }
 
     audio.addEventListener("timeupdate", onTimeUpdate);
@@ -145,7 +204,7 @@ export default function LessonPlayer({ num }: { num: string }) {
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [segments, loopSegIndex, endMode, nextNum, router]);
+  }, [segments, loopSegIndex, endMode, nextNum, router, skipLearned, learnedSet]);
 
   function seekTo(t: number) {
     if (audioRef.current) audioRef.current.currentTime = t;
@@ -235,13 +294,14 @@ export default function LessonPlayer({ num }: { num: string }) {
         文をタップして再生 / 🔁 でその文だけリピート / 下の速度ボタンでゆっくり再生
       </div>
 
-      {/* レッスン終了時の挙動スイッチ */}
+      {/* レッスン終了時の挙動スイッチ / 覚えた文スキップ */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
+          flexWrap: "wrap",
           gap: 8,
-          marginBottom: 22,
+          marginBottom: 10,
           fontSize: 11,
           color: "var(--ink-soft)",
         }}
@@ -283,10 +343,47 @@ export default function LessonPlayer({ num }: { num: string }) {
         </div>
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 22,
+          fontSize: 11,
+          color: "var(--ink-soft)",
+        }}
+      >
+        <button
+          onClick={toggleSkipLearned}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 10px",
+            borderRadius: 13,
+            fontSize: 11,
+            border: "none",
+            cursor: "pointer",
+            background: skipLearned ? "var(--gold)" : "var(--accent-soft)",
+            color: skipLearned ? "white" : "var(--ink-soft)",
+            fontWeight: skipLearned ? 700 : 400,
+          }}
+        >
+          ✓ 覚えた文をスキップ {skipLearned ? "ON" : "OFF"}
+        </button>
+        {learnedSet.size > 0 && (
+          <span>
+            {learnedSet.size} / {segments?.length ?? 0} 文チェック済み
+          </span>
+        )}
+      </div>
+
       {/* 文リスト */}
       <div>
         {segments === null && <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>読み込み中...</p>}
-        {segments?.map((seg, i) => (
+        {segments?.map((seg, i) => {
+          const isLearned = learnedSet.has(i);
+          return (
           <div
             key={i}
             ref={(el) => {
@@ -298,15 +395,16 @@ export default function LessonPlayer({ num }: { num: string }) {
             }}
             style={{
               display: "grid",
-              gridTemplateColumns: "34px 1fr auto",
+              gridTemplateColumns: "34px 1fr auto auto",
               alignItems: "center",
-              gap: 12,
+              gap: 10,
               padding: i === currentSegIndex ? "12px 7px" : "12px 10px",
               borderRadius: 6,
               cursor: "pointer",
               borderBottom: "1px solid var(--paper-line)",
               borderLeft: i === currentSegIndex ? "3px solid var(--accent)" : "none",
               background: i === currentSegIndex ? "var(--accent-soft)" : "transparent",
+              opacity: isLearned ? 0.5 : 1,
             }}
           >
             <div
@@ -326,6 +424,7 @@ export default function LessonPlayer({ num }: { num: string }) {
                 fontSize: 17,
                 lineHeight: 1.55,
                 color: i < currentSegIndex ? "#9aa5b1" : "var(--ink)",
+                textDecoration: isLearned ? "line-through" : "none",
               }}
             >
               {seg.words.map((w, wi) => {
@@ -348,6 +447,26 @@ export default function LessonPlayer({ num }: { num: string }) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                toggleLearned(i);
+              }}
+              title="覚えた文としてチェック"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                border: "1px solid var(--paper-line)",
+                background: isLearned ? "var(--ink)" : "transparent",
+                borderColor: isLearned ? "var(--ink)" : "var(--paper-line)",
+                color: isLearned ? "white" : "var(--ink-soft)",
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              {isLearned ? "✓" : "○"}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
                 toggleLoop(i);
               }}
               style={{
@@ -365,7 +484,8 @@ export default function LessonPlayer({ num }: { num: string }) {
               🔁
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* コントロールバー */}

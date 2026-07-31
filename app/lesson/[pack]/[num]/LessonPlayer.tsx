@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getPack, getLessonNums } from "@/lib/packs";
+import { VOCAB_WORD_SET } from "@/lib/vocabWords";
 
 type Word = { w: string; s: number; e: number };
 type Segment = { start: number; end: number; text: string; words: Word[] };
@@ -431,6 +432,8 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
             >
               {seg.words.map((w, wi) => {
                 const isCurrent = curTime >= w.s && curTime < w.e && i === currentSegIndex;
+                const cleaned = w.w.toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, "");
+                const isVocab = VOCAB_WORD_SET.has(cleaned);
                 return (
                   <span
                     key={wi}
@@ -439,6 +442,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
                       background: isCurrent ? "var(--accent)" : undefined,
                       borderRadius: 3,
                       padding: "0 1px",
+                      fontWeight: isVocab ? 700 : 400,
                     }}
                   >
                     {w.w}{wi < seg.words.length - 1 ? " " : ""}

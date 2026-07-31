@@ -1,14 +1,13 @@
 import Link from "next/link";
-import { LESSON_TITLES, ALL_LESSON_NUMS } from "@/lib/lessonTitles";
 import fs from "fs";
 import path from "path";
+import { PACK_LIST, getLessonNums } from "@/lib/packs";
 
-// public/data/E{num}.json が存在するレッスンだけ「利用可能」として扱う
-function getAvailableLessons(): Set<string> {
-  const dataDir = path.join(process.cwd(), "public", "data");
+function getAvailableLessons(packId: string): Set<string> {
+  const dataDir = path.join(process.cwd(), "public", "data", packId);
   const available = new Set<string>();
   if (fs.existsSync(dataDir)) {
-    for (const num of ALL_LESSON_NUMS) {
+    for (const num of getLessonNums(packId)) {
       if (fs.existsSync(path.join(dataDir, `E${num}.json`))) {
         available.add(num);
       }
@@ -18,8 +17,6 @@ function getAvailableLessons(): Set<string> {
 }
 
 export default function HomePage() {
-  const available = getAvailableLessons();
-
   return (
     <div
       style={{
@@ -34,83 +31,94 @@ export default function HomePage() {
           fontSize: 22,
           borderBottom: "2px solid var(--ink)",
           paddingBottom: 12,
-          margin: "0 0 6px",
+          margin: "0 0 22px",
         }}
       >
-        速読英単語 入門編 — シャドーイング
+        シャドーイング練習
       </h1>
-      <div
-        style={{
-          fontSize: 12,
-          color: "var(--ink-soft)",
-          marginBottom: 22,
-        }}
-      >
-        全68レッスン ・ タップして再生 ・ グレーアウトは未公開
-      </div>
 
-      <div>
-        {ALL_LESSON_NUMS.map((num) => {
-          const [title, category] = LESSON_TITLES[num];
-          const isAvailable = available.has(num);
-          const content = (
-            <div
+      {PACK_LIST.map((pack) => {
+        const available = getAvailableLessons(pack.id);
+        const nums = getLessonNums(pack.id);
+        return (
+          <section key={pack.id} style={{ marginBottom: 32 }}>
+            <h2
               style={{
-                display: "grid",
-                gridTemplateColumns: "34px 1fr auto",
-                alignItems: "center",
-                gap: 12,
-                padding: "11px 8px",
-                borderBottom: "1px solid var(--paper-line)",
-                opacity: isAvailable ? 1 : 0.4,
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: 17,
+                margin: "0 0 4px",
               }}
             >
-              <div
-                style={{
-                  fontFamily: "Georgia, serif",
-                  fontSize: 12,
-                  color: "var(--ink-soft)",
-                  textAlign: "right",
-                }}
-              >
-                {num}
-              </div>
-              <div
-                style={{
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                  fontSize: 16,
-                }}
-              >
-                {title}
-              </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "white",
-                  background: isAvailable ? "var(--accent)" : "var(--ink-soft)",
-                  borderRadius: 10,
-                  padding: "3px 9px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {category}
-              </div>
+              {pack.name}
+            </h2>
+            <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 12 }}>
+              全{nums.length}レッスン ・ タップして再生 ・ グレーアウトは未公開
             </div>
-          );
+            <div>
+              {nums.map((num) => {
+                const [title, category] = pack.lessons[num];
+                const isAvailable = available.has(num);
+                const content = (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "34px 1fr auto",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "11px 8px",
+                      borderBottom: "1px solid var(--paper-line)",
+                      opacity: isAvailable ? 1 : 0.4,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: "Georgia, serif",
+                        fontSize: 12,
+                        color: "var(--ink-soft)",
+                        textAlign: "right",
+                      }}
+                    >
+                      {num}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "Georgia, 'Times New Roman', serif",
+                        fontSize: 16,
+                      }}
+                    >
+                      {title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "white",
+                        background: isAvailable ? "var(--accent)" : "var(--ink-soft)",
+                        borderRadius: 10,
+                        padding: "3px 9px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {category}
+                    </div>
+                  </div>
+                );
 
-          return isAvailable ? (
-            <Link
-              key={num}
-              href={`/lesson/${num}`}
-              style={{ textDecoration: "none" }}
-            >
-              {content}
-            </Link>
-          ) : (
-            <div key={num}>{content}</div>
-          );
-        })}
-      </div>
+                return isAvailable ? (
+                  <Link
+                    key={num}
+                    href={`/lesson/${pack.id}/${num}`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={num}>{content}</div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

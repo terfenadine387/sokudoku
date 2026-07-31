@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LESSON_TITLES, ALL_LESSON_NUMS } from "@/lib/lessonTitles";
+import { getPack, getLessonNums } from "@/lib/packs";
 
 type Word = { w: string; s: number; e: number };
 type Segment = { start: number; end: number; text: string; words: Word[] };
@@ -11,7 +11,7 @@ type Segment = { start: number; end: number; text: string; words: Word[] };
 type EndMode = "next" | "loop" | "stop";
 const END_MODE_KEY = "shadowing_end_mode";
 const SKIP_LEARNED_KEY = "shadowing_skip_learned";
-const learnedKeyFor = (num: string) => `shadowing_learned_E${num}`;
+const learnedKeyFor = (pack: string, num: string) => `shadowing_learned_${pack}_E${num}`;
 
 function fmtTime(t: number) {
   if (!isFinite(t)) return "0:00";
@@ -22,7 +22,7 @@ function fmtTime(t: number) {
   return `${m}:${s}`;
 }
 
-export default function LessonPlayer({ num }: { num: string }) {
+export default function LessonPlayer({ pack, num }: { pack: string; num: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -42,10 +42,12 @@ export default function LessonPlayer({ num }: { num: string }) {
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
   const autoplayHandledRef = useRef(false);
 
-  const idx = ALL_LESSON_NUMS.indexOf(num);
-  const [title, category] = LESSON_TITLES[num] ?? ["", ""];
-  const prevNum = idx > 0 ? ALL_LESSON_NUMS[idx - 1] : null;
-  const nextNum = idx < ALL_LESSON_NUMS.length - 1 ? ALL_LESSON_NUMS[idx + 1] : null;
+  const packMeta = getPack(pack);
+  const packLessonNums = getLessonNums(pack);
+  const idx = packLessonNums.indexOf(num);
+  const [title, category] = packMeta?.lessons[num] ?? ["", ""];
+  const prevNum = idx > 0 ? packLessonNums[idx - 1] : null;
+  const nextNum = idx < packLessonNums.length - 1 ? packLessonNums[idx + 1] : null;
 
   // レッスン終了時の挙動設定をlocalStorageから読み込み
   useEffect(() => {
@@ -73,20 +75,20 @@ export default function LessonPlayer({ num }: { num: string }) {
   // レッスンが変わったら、そのレッスンの「覚えた」記録を読み込む
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(learnedKeyFor(num));
+      const raw = localStorage.getItem(learnedKeyFor(pack, num));
       const arr: number[] = raw ? JSON.parse(raw) : [];
       setLearnedSet(new Set(arr));
     } catch {
       setLearnedSet(new Set());
     }
-  }, [num]);
+  }, [pack, num]);
 
   function toggleLearned(i: number) {
     setLearnedSet((prev) => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i);
       else next.add(i);
-      localStorage.setItem(learnedKeyFor(num), JSON.stringify(Array.from(next)));
+      localStorage.setItem(learnedKeyFor(pack, num), JSON.stringify(Array.from(next)));
       return next;
     });
   }
@@ -95,14 +97,14 @@ export default function LessonPlayer({ num }: { num: string }) {
     setSegments(null);
     setError(false);
     autoplayHandledRef.current = false;
-    fetch(`/data/E${num}.json`)
+    fetch(`/data/${pack}/E${num}.json`)
       .then((r) => {
         if (!r.ok) throw new Error("not found");
         return r.json();
       })
       .then(setSegments)
       .catch(() => setError(true));
-  }, [num]);
+  }, [pack, num]);
 
   // ?autoplay=1 で遷移してきた場合、読み込み後に自動再生
   useEffect(() => {
@@ -122,7 +124,7 @@ export default function LessonPlayer({ num }: { num: string }) {
 
     function handleLessonEnd() {
       if (endMode === "next" && nextNum) {
-        router.push(`/lesson/${nextNum}?autoplay=1`);
+        router.push(`/lesson/${pack}/${nextNum}?autoplay=1`);
       } else if (endMode === "loop") {
         audio!.currentTime = 0;
         audio!.play().catch(() => {});
@@ -204,7 +206,7 @@ export default function LessonPlayer({ num }: { num: string }) {
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [segments, loopSegIndex, endMode, nextNum, router, skipLearned, learnedSet]);
+  }, [segments, loopSegIndex, endMode, nextNum, pack, router, skipLearned, learnedSet]);
 
   function seekTo(t: number) {
     if (audioRef.current) audioRef.current.currentTime = t;
@@ -236,7 +238,7 @@ export default function LessonPlayer({ num }: { num: string }) {
     return (
       <div style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
         <p>
-          E{num} のデータ (/data/E{num}.json) が見つかりません。
+          {pack} / E{num} のデータ (/data/{pack}/E{num}.json) が見つかりません。
           public/data と public/audio にファイルが配置されているか確認してください。
         </p>
         <Link href="/">目次に戻る</Link>
@@ -246,7 +248,7 @@ export default function LessonPlayer({ num }: { num: string }) {
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "20px 20px 130px" }}>
-      <audio ref={audioRef} src={`/audio/E${num}.mp3`} preload="metadata" />
+      <audio ref={audioRef} src={`/audio/${pack}/E${num}.mp3`} preload="metadata" />
 
       {/* トップナビ */}
       <div
@@ -257,7 +259,7 @@ export default function LessonPlayer({ num }: { num: string }) {
           marginBottom: 14,
         }}
       >
-        <NavLink href={prevNum ? `/lesson/${prevNum}` : undefined} label={`← E${prevNum ?? ""}`} />
+        <NavLink href={prevNum ? `/lesson/${pack}/${prevNum}` : undefined} label={`← E${prevNum ?? ""}`} />
         <Link
           href="/"
           style={{
@@ -269,7 +271,7 @@ export default function LessonPlayer({ num }: { num: string }) {
         >
           ☰ 目次
         </Link>
-        <NavLink href={nextNum ? `/lesson/${nextNum}` : undefined} label={`E${nextNum ?? ""} →`} />
+        <NavLink href={nextNum ? `/lesson/${pack}/${nextNum}` : undefined} label={`E${nextNum ?? ""} →`} />
       </div>
 
       {/* ヘッダー */}
@@ -287,7 +289,7 @@ export default function LessonPlayer({ num }: { num: string }) {
         >
           {title}
         </h1>
-        <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>E{num} ・ 速読英単語 入門編</div>
+        <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>E{num} ・ {packMeta?.name}</div>
       </div>
 
       <div style={{ fontSize: 12, color: "var(--ink-soft)", margin: "10px 0 14px" }}>

@@ -12,33 +12,30 @@ E01〜E68の例文シャドーイング練習用アプリ。目次ページ・�
 ## セットアップ手順
 
 ### 1. 依存パッケージのインストール
-プロジェクトのルート(このREADMEがあるフォルダ)で:
 ```bash
 npm install
 ```
 
 ### 2. 音声・データをpublicフォルダに配置
-`scripts/prepare_public.py` を開き、`SOURCE_DIR` を実際のmp3/json格納フォルダのパスに書き換える:
-```python
-SOURCE_DIR = r"C:\Users\terfe\Downloads\新しいフォルダー"
-```
-書き換えたら実行:
+`scripts/prepare_public.py` を開き、`SOURCE_DIR` を実際のmp3/json格納フォルダのパスに書き換えて実行:
 ```bash
 python scripts/prepare_public.py
 ```
-`public/audio/E01.mp3`〜、`public/data/E01.json`〜 が生成されます。
+`public/audio/sokutan-nyumon/E01.mp3`〜、`public/data/sokutan-nyumon/E01.json`〜 が生成されます。
 
 ### 3. ローカルで動作確認
 ```bash
 npm run dev
 ```
-ブラウザで `http://localhost:3000` を開いて確認。
 
-### 4. ビルド確認(念のため)
+### 4. ビルド確認
 ```bash
 npm run build
 ```
-エラーが出なければOK。
+
+## 新しい教材(パック)を追加したいとき
+`ADD_NEW_PACK.md` を参照してください。文字起こし・ファイル配置はスクリプトで自動化されており、
+手作業が必要なのは「音声の用意」と「タイトルの記入」だけです。
 
 ## Vercelへのデプロイ手順(既存ワークフローと同じ)
 

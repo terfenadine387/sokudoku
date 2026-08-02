@@ -7,7 +7,7 @@ import { getPack, getLessonNums } from "@/lib/packs";
 import { VOCAB_WORD_SET } from "@/lib/vocabWords";
 
 type Word = { w: string; s: number; e: number };
-type Segment = { start: number; end: number; text: string; words: Word[] };
+type Segment = { start: number; end: number; text: string; words: Word[]; ja?: string };
 
 type EndMode = "next" | "loop" | "stop";
 const END_MODE_KEY = "shadowing_end_mode";
@@ -38,6 +38,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
   const [endMode, setEndMode] = useState<EndMode>("stop");
   const [learnedSet, setLearnedSet] = useState<Set<number>>(new Set());
   const [skipLearned, setSkipLearned] = useState(false);
+  const [openTranslations, setOpenTranslations] = useState<Set<number>>(new Set());
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -230,6 +231,15 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
     }
   }
 
+  function toggleTranslation(i: number) {
+    setOpenTranslations((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
   function changeRate(r: number) {
     setRate(r);
     if (audioRef.current) audioRef.current.playbackRate = r;
@@ -398,7 +408,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
             }}
             style={{
               display: "grid",
-              gridTemplateColumns: "34px 1fr auto auto",
+              gridTemplateColumns: "34px 1fr auto auto auto",
               alignItems: "center",
               gap: 10,
               padding: i === currentSegIndex ? "12px 7px" : "12px 10px",
@@ -421,34 +431,48 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
             >
               {(i + 1).toString().padStart(2, "0")}
             </div>
-            <div
-              style={{
-                fontFamily: "Georgia, 'Times New Roman', serif",
-                fontSize: 17,
-                lineHeight: 1.55,
-                color: i < currentSegIndex ? "#9aa5b1" : "var(--ink)",
-                textDecoration: isLearned ? "line-through" : "none",
-              }}
-            >
-              {seg.words.map((w, wi) => {
-                const isCurrent = curTime >= w.s && curTime < w.e && i === currentSegIndex;
-                const cleaned = w.w.toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, "");
-                const isVocab = VOCAB_WORD_SET.has(cleaned);
-                return (
-                  <span
-                    key={wi}
-                    style={{
-                      color: isCurrent ? "var(--paper)" : undefined,
-                      background: isCurrent ? "var(--accent)" : undefined,
-                      borderRadius: 3,
-                      padding: "0 1px",
-                      fontWeight: isVocab ? 700 : 400,
-                    }}
-                  >
-                    {w.w}{wi < seg.words.length - 1 ? " " : ""}
-                  </span>
-                );
-              })}
+            <div>
+              <div
+                style={{
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: 17,
+                  lineHeight: 1.55,
+                  color: i < currentSegIndex ? "#9aa5b1" : "var(--ink)",
+                  textDecoration: isLearned ? "line-through" : "none",
+                }}
+              >
+                {seg.words.map((w, wi) => {
+                  const isCurrent = curTime >= w.s && curTime < w.e && i === currentSegIndex;
+                  const cleaned = w.w.toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, "");
+                  const isVocab = VOCAB_WORD_SET.has(cleaned);
+                  return (
+                    <span
+                      key={wi}
+                      style={{
+                        color: isCurrent ? "var(--paper)" : undefined,
+                        background: isCurrent ? "var(--accent)" : undefined,
+                        borderRadius: 3,
+                        padding: "0 1px",
+                        fontWeight: isVocab ? 700 : 400,
+                      }}
+                    >
+                      {w.w}{wi < seg.words.length - 1 ? " " : ""}
+                    </span>
+                  );
+                })}
+              </div>
+              {openTranslations.has(i) && (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--ink-soft)",
+                    marginTop: 4,
+                    fontFamily: "Hiragino Sans, Yu Gothic, sans-serif",
+                  }}
+                >
+                  {seg.ja ?? "(この文の日本語訳はまだ登録されていません)"}
+                </div>
+              )}
             </div>
             <button
               onClick={(e) => {
@@ -469,6 +493,26 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
               }}
             >
               {isLearned ? "✓" : "○"}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleTranslation(i);
+              }}
+              title="日本語訳を表示(音声はそのまま)"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                border: "1px solid var(--paper-line)",
+                background: openTranslations.has(i) ? "var(--accent)" : "transparent",
+                borderColor: openTranslations.has(i) ? "var(--accent)" : "var(--paper-line)",
+                color: openTranslations.has(i) ? "white" : "var(--ink-soft)",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              訳
             </button>
             <button
               onClick={(e) => {

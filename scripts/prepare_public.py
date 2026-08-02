@@ -23,8 +23,8 @@ import shutil
 import glob
 
 # ==== ここを毎回書き換える ====
-PACK_ID = "sokutan-nyumon"
-SOURCE_DIR = r"C:\Users\terfe\Downloads\新しいフォルダー"   # ← mp3とjsonが実際にあるフォルダに書き換え
+PACK_ID = "sokutan-nyumon"          # lib/packs/*.ts の pack.id と一致させる
+SOURCE_DIR = r"C:\Users\terfe\Downloads\新しいフォルダー"
 FILE_PREFIX = "sokutan-nyumon_reibun-E"
 # ================================
 

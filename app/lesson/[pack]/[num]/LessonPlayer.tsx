@@ -10,7 +10,9 @@ type Word = { w: string; s: number; e: number };
 type Segment = { start: number; end: number; text: string; words: Word[]; ja?: string };
 
 type EndMode = "next" | "loop" | "stop";
+type Direction = "forward" | "backward";
 const END_MODE_KEY = "shadowing_end_mode";
+const DIRECTION_KEY = "shadowing_direction";
 const SKIP_LEARNED_KEY = "shadowing_skip_learned";
 const learnedKeyFor = (pack: string, num: string) => `shadowing_learned_${pack}_E${num}`;
 
@@ -36,6 +38,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1.0);
   const [endMode, setEndMode] = useState<EndMode>("stop");
+  const [direction, setDirection] = useState<Direction>("forward");
   const [learnedSet, setLearnedSet] = useState<Set<number>>(new Set());
   const [skipLearned, setSkipLearned] = useState(false);
   const [openTranslations, setOpenTranslations] = useState<Set<number>>(new Set());
@@ -50,12 +53,18 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
   const [title, category] = packMeta?.lessons[num] ?? ["", ""];
   const prevNum = idx > 0 ? packLessonNums[idx - 1] : null;
   const nextNum = idx < packLessonNums.length - 1 ? packLessonNums[idx + 1] : null;
+  // 「レッスン終了時: 次へ」で実際に移動する先(再生方向に応じて切り替え)
+  const advanceTargetNum = direction === "forward" ? nextNum : prevNum;
 
   // レッスン終了時の挙動設定をlocalStorageから読み込み
   useEffect(() => {
     const saved = localStorage.getItem(END_MODE_KEY);
     if (saved === "next" || saved === "loop" || saved === "stop") {
       setEndMode(saved);
+    }
+    const savedDir = localStorage.getItem(DIRECTION_KEY);
+    if (savedDir === "forward" || savedDir === "backward") {
+      setDirection(savedDir);
     }
     const savedSkip = localStorage.getItem(SKIP_LEARNED_KEY);
     if (savedSkip === "1") setSkipLearned(true);
@@ -64,6 +73,11 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
   function changeEndMode(mode: EndMode) {
     setEndMode(mode);
     localStorage.setItem(END_MODE_KEY, mode);
+  }
+
+  function changeDirection(dir: Direction) {
+    setDirection(dir);
+    localStorage.setItem(DIRECTION_KEY, dir);
   }
 
   function toggleSkipLearned() {
@@ -125,8 +139,8 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
     if (!audio || !segments) return;
 
     function handleLessonEnd() {
-      if (endMode === "next" && nextNum) {
-        router.push(`/lesson/${pack}/${nextNum}?autoplay=1`);
+      if (endMode === "next" && advanceTargetNum) {
+        router.push(`/lesson/${pack}/${advanceTargetNum}?autoplay=1`);
       } else if (endMode === "loop") {
         audio!.currentTime = 0;
         audio!.play().catch(() => {});
@@ -208,7 +222,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [segments, loopSegIndex, endMode, nextNum, pack, router, skipLearned, learnedSet]);
+  }, [segments, loopSegIndex, endMode, direction, advanceTargetNum, pack, router, skipLearned, learnedSet]);
 
   function seekTo(t: number) {
     if (audioRef.current) audioRef.current.currentTime = t;
@@ -354,6 +368,41 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
             </button>
           ))}
         </div>
+        {endMode === "next" && (
+          <div
+            style={{
+              display: "flex",
+              gap: 3,
+              background: "var(--accent-soft)",
+              borderRadius: 16,
+              padding: 3,
+            }}
+          >
+            {(
+              [
+                { dir: "forward" as Direction, label: "→ 正順(E01→)" },
+                { dir: "backward" as Direction, label: "← 逆順(E68→)" },
+              ]
+            ).map(({ dir, label }) => (
+              <button
+                key={dir}
+                onClick={() => changeDirection(dir)}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 13,
+                  fontSize: 11,
+                  border: "none",
+                  cursor: "pointer",
+                  background: direction === dir ? "var(--accent)" : "transparent",
+                  color: direction === dir ? "white" : "var(--ink-soft)",
+                  fontWeight: direction === dir ? 700 : 400,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div

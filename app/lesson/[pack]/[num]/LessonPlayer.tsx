@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getPack, getLessonNums } from "@/lib/packs";
 import { VOCAB_WORD_SET } from "@/lib/vocabWords";
 
-type Word = { w: string; s: number; e: number };
+type Word = { w: string; s: number; e: number; v?: boolean };
 type Segment = { start: number; end: number; text: string; words: Word[]; ja?: string };
 
 type EndMode = "next" | "loop" | "stop";
@@ -492,8 +492,10 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
               >
                 {seg.words.map((w, wi) => {
                   const isCurrent = curTime >= w.s && curTime < w.e && i === currentSegIndex;
-                  const cleaned = w.w.toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, "");
-                  const isVocab = VOCAB_WORD_SET.has(cleaned);
+                  const isVocab =
+                    w.v !== undefined
+                      ? w.v
+                      : VOCAB_WORD_SET.has(w.w.toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, ""));
                   return (
                     <span
                       key={wi}

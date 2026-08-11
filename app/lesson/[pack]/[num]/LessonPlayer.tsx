@@ -123,36 +123,59 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
       .catch(() => setError(true));
   }, [pack, num]);
 
+  function handleLessonEnd() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (lessonEndHandledRef.current) return;
+    lessonEndHandledRef.current = true;
+    if (endMode === "next" && advanceTargetNum) {
+      router.push(`/lesson/${pack}/${advanceTargetNum}?autoplay=1`);
+    } else if (endMode === "loop") {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+      lessonEndHandledRef.current = false; // 頭へ戻るモードは毎周回また判定できるようにする
+    } else {
+      audio.pause();
+    }
+    // "stop" の場合は何もしない(自然に停止した状態のまま)
+  }
+
+  // skipLearnedがONの時、再生開始前にスキップ先を計算する。
+  // 全文が「覚えた」済みならレッスンをまるごとスキップして次の処理へ、
+  // そうでなければ最初の未チェック文までシークしてから再生する。
+  function startPlaybackRespectingSkip() {
+    const audio = audioRef.current;
+    if (!audio || !segments) return;
+
+    if (skipLearned) {
+      const firstUnlearned = segments.findIndex((_, i) => !learnedSet.has(i));
+      if (firstUnlearned === -1) {
+        // 全文チェック済み → 再生せずにレッスン終了処理へ
+        handleLessonEnd();
+        return;
+      }
+      if (firstUnlearned > 0) {
+        audio.currentTime = segments[firstUnlearned].start;
+      }
+    }
+    audio.play().catch(() => {});
+  }
+
   // ?autoplay=1 で遷移してきた場合、読み込み後に自動再生
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !segments || autoplayHandledRef.current) return;
     if (searchParams.get("autoplay") === "1") {
       autoplayHandledRef.current = true;
-      const tryPlay = () => audio.play().catch(() => {});
+      const tryPlay = () => startPlaybackRespectingSkip();
       if (audio.readyState >= 1) tryPlay();
       else audio.addEventListener("loadedmetadata", tryPlay, { once: true });
     }
-  }, [segments, searchParams]);
+  }, [segments, searchParams, skipLearned, learnedSet]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !segments) return;
-
-    function handleLessonEnd() {
-      if (lessonEndHandledRef.current) return;
-      lessonEndHandledRef.current = true;
-      if (endMode === "next" && advanceTargetNum) {
-        router.push(`/lesson/${pack}/${advanceTargetNum}?autoplay=1`);
-      } else if (endMode === "loop") {
-        audio!.currentTime = 0;
-        audio!.play().catch(() => {});
-        lessonEndHandledRef.current = false; // 頭へ戻るモードは毎周回また判定できるようにする
-      } else {
-        audio!.pause();
-      }
-      // "stop" の場合は何もしない(自然に停止した状態のまま)
-    }
 
     function onTimeUpdate() {
       const t = audio!.currentTime;

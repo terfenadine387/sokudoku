@@ -45,6 +45,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
   const audioRef = useRef<HTMLAudioElement>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
   const autoplayHandledRef = useRef(false);
+  const lessonEndHandledRef = useRef(false);
 
   const packMeta = getPack(pack);
   const packLessonNums = getLessonNums(pack);
@@ -112,6 +113,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
     setSegments(null);
     setError(false);
     autoplayHandledRef.current = false;
+    lessonEndHandledRef.current = false;
     fetch(`/data/${pack}/E${num}.json`)
       .then((r) => {
         if (!r.ok) throw new Error("not found");
@@ -138,11 +140,14 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
     if (!audio || !segments) return;
 
     function handleLessonEnd() {
+      if (lessonEndHandledRef.current) return;
+      lessonEndHandledRef.current = true;
       if (endMode === "next" && advanceTargetNum) {
         router.push(`/lesson/${pack}/${advanceTargetNum}?autoplay=1`);
       } else if (endMode === "loop") {
         audio!.currentTime = 0;
         audio!.play().catch(() => {});
+        lessonEndHandledRef.current = false; // 頭へ戻るモードは毎周回また判定できるようにする
       } else {
         audio!.pause();
       }

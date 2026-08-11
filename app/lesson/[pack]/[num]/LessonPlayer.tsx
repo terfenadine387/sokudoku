@@ -88,17 +88,6 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
     });
   }
 
-  // レッスンが変わったら、そのレッスンの「覚えた」記録を読み込む
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(learnedKeyFor(pack, num));
-      const arr: number[] = raw ? JSON.parse(raw) : [];
-      setLearnedSet(new Set(arr));
-    } catch {
-      setLearnedSet(new Set());
-    }
-  }, [pack, num]);
-
   function toggleLearned(i: number) {
     setLearnedSet((prev) => {
       const next = new Set(prev);
@@ -109,11 +98,23 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
     });
   }
 
+  // レッスンが変わったら、文データと「覚えた」記録をまとめて読み込む
+  // (別々のeffectだと読み込み完了タイミングがズレて、再生開始時の
+  //  スキップ判定が古いlearnedSetを参照してしまうことがあるため統合している)
   useEffect(() => {
     setSegments(null);
     setError(false);
     autoplayHandledRef.current = false;
     lessonEndHandledRef.current = false;
+
+    try {
+      const raw = localStorage.getItem(learnedKeyFor(pack, num));
+      const arr: number[] = raw ? JSON.parse(raw) : [];
+      setLearnedSet(new Set(arr));
+    } catch {
+      setLearnedSet(new Set());
+    }
+
     fetch(`/data/${pack}/E${num}.json`)
       .then((r) => {
         if (!r.ok) throw new Error("not found");
@@ -122,6 +123,7 @@ export default function LessonPlayer({ pack, num }: { pack: string; num: string 
       .then(setSegments)
       .catch(() => setError(true));
   }, [pack, num]);
+
 
   function handleLessonEnd() {
     const audio = audioRef.current;
